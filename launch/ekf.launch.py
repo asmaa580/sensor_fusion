@@ -5,32 +5,43 @@ import os
 
 def generate_launch_description():
 
-    config = os.path.join(
-        get_package_share_directory('localization'),
-        'config',
-        'ekf.yaml'
-    )
+    pkg_path = get_package_share_directory('localization')
+
+    ekf_local_config = os.path.join(pkg_path, 'config', 'ekf_local.yaml')
+    ekf_global_config = os.path.join(pkg_path, 'config', 'ekf_global.yaml')
+    navsat_config = os.path.join(pkg_path, 'config', 'navsat.yaml')
 
     return LaunchDescription([
 
+        # Local EKF (smooth odometry imu and camera)
         Node(
             package='robot_localization',
             executable='ekf_node',
-            name='ekf_filter_node',
+            name='ekf_local',
             output='screen',
-            parameters=[config]
+            parameters=[ekf_local_config]
         ),
-        
-         # NavSat transform
+
+        # NavSat transform (GPS conversion)
         Node(
             package='robot_localization',
             executable='navsat_transform_node',
             name='navsat_transform',
-            parameters=['navsat.yaml'],
+            output='screen',
+            parameters=[navsat_config],
             remappings=[
                 ('imu/data', '/imu/data'),
-                ('gps/fix', '/fix')
+                ('gps/fix', '/gps/fix'),
+                ('odometry/filtered', '/odometry/filtered')  # from ekf_local
             ]
         ),
 
+        # Global EKF (GPS + IMU + camera)
+        Node(
+            package='robot_localization',
+            executable='ekf_node',
+            name='ekf_global',
+            output='screen',
+            parameters=[ekf_global_config]
+        ),
     ])

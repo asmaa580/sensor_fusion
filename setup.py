@@ -11,7 +11,12 @@ setup(
         ['resource/localization']),
     ('share/localization', ['package.xml']),
 
-    ('share/localization/config', ['config/ekf.yaml']),
+    ('share/localization/config', [
+            'config/ekf_local.yaml',
+            'config/ekf_global.yaml',
+            'config/navsat.yaml'
+        ]),
+
     ('share/localization/launch', ['launch/ekf.launch.py']),
 
     ],
@@ -33,3 +38,5 @@ setup(
         ],
     },
 )
+
+

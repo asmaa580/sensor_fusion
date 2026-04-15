@@ -1,89 +1,120 @@
 import rclpy
 from rclpy.node import Node
 
+from sensor_msgs.msg import Imu, NavSatFix
 from nav_msgs.msg import Odometry
-from sensor_msgs.msg import Imu
 from geometry_msgs.msg import Quaternion
+from std_msgs.msg import Header
+
 import math
-import random
 
-def create_quaternion(yaw):
-    # Convert yaw (in radians) to quaternion
-    return Quaternion(
-        x=0.0,
-        y=0.0,
-        z=math.sin(yaw / 2.0),
-        w=math.cos(yaw / 2.0)
-    )
+def yaw_to_quaternion(yaw: float) -> Quaternion:
+    """Convert yaw (in radians) to a quaternion."""
+    q = Quaternion()
+    q.z = math.sin(yaw / 2.0)
+    q.w = math.cos(yaw / 2.0)
+    return q
 
-class FakeSensorPublisher(Node):
+class FakeSensors(Node):
+
     def __init__(self):
-        super().__init__('fake_sensor_publisher')
+        super().__init__('fake_sensors')
 
         # Publishers
-        self.odom_pub = self.create_publisher(Odometry, '/camera/odom', 10)
-        self.gps_pub = self.create_publisher(Odometry, '/odometry/gps', 10)
         self.imu_pub = self.create_publisher(Imu, '/imu/data', 10)
+        self.odom_pub = self.create_publisher(Odometry, '/camera/odom', 10)
+        self.gps_pub = self.create_publisher(NavSatFix, '/gps/fix', 10)
 
-        # Timers
-        self.create_timer(0.1, self.publish_camera_odom)  # 10 Hz
-        self.create_timer(1.0, self.publish_gps)          # 1 Hz
-        self.create_timer(0.05, self.publish_imu)         # 20 Hz
+        # Simulation time
+        self.t = 0.0
+        self.timer = self.create_timer(0.1, self.publish_data)
 
-        self.x = 0.0
-        self.y = 0.0
-        self.yaw = 0.0
+    def publish_data(self):
+        self.t += 0.1
 
-    def publish_camera_odom(self):
-        msg = Odometry()
-        msg.header.stamp = self.get_clock().now().to_msg()
-        msg.header.frame_id = 'odom'
-        msg.child_frame_id = 'base_link'
+        # Fake motion: straight line forward
+        x = self.t
+        y = 0.0
+        yaw = 0.0
 
-        # Simulate forward motion
-        self.x += 0.05
-        self.yaw += 0.01
+        # ======================
+        # ODOMETRY
+        # ======================
+        odom = Odometry()
+        odom.header = Header()
+        odom.header.stamp = self.get_clock().now().to_msg()
+        odom.header.frame_id = "odom"
+        odom.child_frame_id = "base_link"
 
-        msg.pose.pose.position.x = self.x
-        msg.pose.pose.position.y = self.y
-        msg.pose.pose.orientation = create_quaternion(self.yaw)
+        odom.pose.pose.position.x = x
+        odom.pose.pose.position.y = y
+        odom.pose.pose.orientation = yaw_to_quaternion(yaw)
 
-        msg.twist.twist.linear.x = 0.5
-        msg.twist.twist.angular.z = 0.1
+        odom.twist.twist.linear.x = 1.0
 
-        self.odom_pub.publish(msg)
+        # Covariance (nonzero so EKF trusts it)
+        odom.pose.covariance = [
+            0.05, 0, 0, 0, 0, 0,
+            0, 0.05, 0, 0, 0, 0,
+            0, 0, 0.1, 0, 0, 0,
+            0, 0, 0, 0.1, 0, 0,
+            0, 0, 0, 0, 0.1, 0,
+            0, 0, 0, 0, 0, 0.1
+        ]
 
-    def publish_gps(self):
-        msg = Odometry()
-        msg.header.stamp = self.get_clock().now().to_msg()
-        msg.header.frame_id = 'map'
-        msg.child_frame_id = 'base_link'
+        self.odom_pub.publish(odom)
 
-        # GPS is noisy
-        msg.pose.pose.position.x = self.x + random.uniform(-0.2, 0.2)
-        msg.pose.pose.position.y = self.y + random.uniform(-0.2, 0.2)
+        # ======================
+        # IMU
+        # ======================
+        imu = Imu()
+        imu.header = Header()
+        imu.header.stamp = self.get_clock().now().to_msg()
+        imu.header.frame_id = "base_link"
 
-        self.gps_pub.publish(msg)
+        imu.orientation = yaw_to_quaternion(yaw)
+        imu.angular_velocity.z = 0.0
+        imu.linear_acceleration.x = 0.0
+        imu.linear_acceleration.y = 0.0
+        imu.linear_acceleration.z = 0.0
 
-    def publish_imu(self):
-        msg = Imu()
-        msg.header.stamp = self.get_clock().now().to_msg()
-        msg.header.frame_id = 'base_link'
+        # Covariances (realistic small values)
+        imu.orientation_covariance = [0.01, 0, 0,
+                                      0, 0.01, 0,
+                                      0, 0, 0.01]
+        imu.angular_velocity_covariance = [0.001, 0, 0,
+                                           0, 0.001, 0,
+                                           0, 0, 0.001]
+        imu.linear_acceleration_covariance = [0.1, 0, 0,
+                                              0, 0.1, 0,
+                                              0, 0, 0.1]
 
-        msg.orientation = create_quaternion(self.yaw)
-        msg.angular_velocity.z = 0.1
-        msg.linear_acceleration.x = 0.0
-        msg.linear_acceleration.y = 0.0
-        msg.linear_acceleration.z = 0.0
+        self.imu_pub.publish(imu)
 
-        self.imu_pub.publish(msg)
+        # ======================
+        # GPS
+        # ======================
+        gps = NavSatFix()
+        gps.header = Header()
+        gps.header.stamp = self.get_clock().now().to_msg()
+        gps.header.frame_id = "gps_link"
+
+        gps.latitude = 30.0 + x * 0.00001
+        gps.longitude = 31.0 + y * 0.00001
+        gps.altitude = 0.0
+
+        # Covariance (approximate GPS accuracy ~3m)
+        gps.position_covariance = [9.0, 0, 0,
+                                   0, 9.0, 0,
+                                   0, 0, 16.0]
+        gps.position_covariance_type = NavSatFix.COVARIANCE_TYPE_APPROXIMATED
+
+        self.gps_pub.publish(gps)
+
 
 def main(args=None):
     rclpy.init(args=args)
-    node = FakeSensorPublisher()
+    node = FakeSensors()
     rclpy.spin(node)
     node.destroy_node()
     rclpy.shutdown()
-
-if __name__ == '__main__':
-    main()
