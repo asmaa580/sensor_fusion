@@ -13,6 +13,7 @@ def generate_launch_description():
 
     return LaunchDescription([
 
+
         # Local EKF (smooth odometry imu and camera)
         Node(
             package='robot_localization',
