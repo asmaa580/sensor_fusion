@@ -10,3 +10,9 @@ navsat_transform:
 
     broadcast_cartesian_transform: false
     use_odometry_yaw: true
+
+    use_sim_time: true
+
+    imu_topic: /imu
+    gps_topic: /gps/fix
+    odometry_topic: /odom
